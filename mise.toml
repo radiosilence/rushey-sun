@@ -1,0 +1,10 @@
+[tools]
+uv = "latest"
+
+[tasks.data]
+description = "Rebuild site/data from EA LIDAR and OSM (delete pipeline/raw to refetch)"
+run = "uv run pipeline/build.py"
+
+[tasks.serve]
+description = "Serve the site on :8765"
+run = "python3 -m http.server 8765 -d site"
