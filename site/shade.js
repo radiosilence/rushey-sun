@@ -11,13 +11,24 @@ async function gunzip(url) {
   return new Uint8Array(await new Response(res.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
 }
 
-function unpackU16(bytes, w, h) {
+// Inverses of pack_plane and pack_rows in pipeline/build.py. Arithmetic is mod 2^16, so negative residuals wrap back.
+function unpackPlane(bytes, w, h) {
+  const n = w * h, out = new Uint16Array(n);
+  for (let i = 0; i < n; i++) {
+    const d = bytes[i] | (bytes[n + i] << 8), c = i % w;
+    const pred = i < w ? (c ? out[i - 1] : 0) : c ? out[i - 1] + out[i - w] - out[i - w - 1] : out[i - w];
+    out[i] = (pred + d) & 0xffff;
+  }
+  return out;
+}
+
+function unpackRows(bytes, w, h, base) {
   const n = w * h, out = new Uint16Array(n);
   for (let r = 0; r < h; r++) {
     let acc = 0;
     for (let i = r * w, end = i + w; i < end; i++) {
       acc = (acc + (bytes[i] | (bytes[n + i] << 8))) & 0xffff;
-      out[i] = acc;
+      out[i] = base[i] + acc;
     }
   }
   return out;
@@ -25,12 +36,13 @@ function unpackU16(bytes, w, h) {
 
 /** Surface layers in centimetres, raster order (row 0 = north edge). */
 export async function loadWorld() {
-  const [scene, top, ground, under] = await Promise.all([
+  const [scene, above, steps, under] = await Promise.all([
     fetch("data/scene.json").then((r) => r.json()),
-    gunzip("data/top.u16.gz"), gunzip("data/ground.u16.gz"), gunzip("data/under.u8.gz"),
+    gunzip("data/above.u16.gz"), gunzip("data/ground.u16.gz"), gunzip("data/under.u8.gz"),
   ]);
   const { w, h } = scene;
-  return { ...scene, top: unpackU16(top, w, h), ground: unpackU16(ground, w, h), under };
+  const ground = unpackPlane(steps, w, h).map((g) => g * 5);
+  return { ...scene, top: unpackRows(above, w, h, ground), ground, under };
 }
 
 export function groundAt(world, x, y) {

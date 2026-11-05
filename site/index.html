@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rushey Sun — Catford sun map</title>
-<meta name="description" content="3D sun and shadow simulation of Catford, Ladywell Fields and Blythe Hill from 1m LIDAR, ranking benches and pub seats by hours of direct sun.">
+<meta name="description" content="3D sun and shadow simulation of Catford, Lewisham, Ladywell, Brockley and Honor Oak from 1m LIDAR, ranking benches and pub gardens by hours of direct sun.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='9' fill='%23f2ac3a'/%3E%3Cpath d='M7.94 12A9 9 0 0 1 24.06 12Z' fill='%23f3e6c4'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
@@ -25,7 +25,7 @@
 <aside id="panel">
   <header>
     <h1>Rushey Sun</h1>
-    <p>Ladywell Fields, Blythe Hill and Rushey Green: which bench, or which pub's front step, is in the sun.</p>
+    <p>Honor Oak to Lewisham, Blythe Hill to Rushey Green: which bench, pub garden or front step is in the sun.</p>
   </header>
 
   <section class="controls">
@@ -82,7 +82,7 @@
     <details>
       <summary>How this works, and where it lies</summary>
       <p>Shadows are ray-marched against the Environment Agency's 1m first-return LIDAR surface, so trees and buildings are the real scanned shapes. Bench positions, footprints and paths are from OpenStreetMap. A seat is sampled 1m above the ground every five minutes; the percentage is the share of daylight spent in direct sun.</p>
-      <p>Pubs are placed at their mapped outdoor seating where OpenStreetMap has it, and otherwise on the pavement in front of the wall nearest the road. A back garden that nobody has mapped is not here; pin it if you know where it is.</p>
+      <p>Every pub has a seat on the pavement in front of the wall nearest the road. Pubs with a garden get a second seat: the mapped outdoor seating where OpenStreetMap has it, otherwise the middle of the open ground behind the pub, for pubs whose garden is known from CAMRA's listings. That garden seat is an estimate; pin the real table if you know it.</p>
       <p>LIDAR is flown in winter, so crowns are filled in to approximate summer leaf. Tree shade is therefore pessimistic from November to March, when most of this canopy is bare. Rays may pass under a crown for up to 30m before trunks and undergrowth are assumed to block them. Cloud is not modelled. Benches missing from OpenStreetMap are missing here, and movable furniture is wherever it was last mapped — drop a pin on the real spot instead.</p>
     </details>
     <p class="muted">Contains public sector information licensed under the Open Government Licence v3.0 © Environment Agency. Map data © OpenStreetMap contributors (ODbL).</p>
