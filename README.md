@@ -42,6 +42,8 @@ mise run data    # fetch LIDAR + OSM into pipeline/raw, write site/data
 mise run serve   # http://localhost:8765
 ```
 
+OSM is a snapshot taken at build time; the site never queries it. To get a map edit onto the site, edit OpenStreetMap and wait for the `rebuild` workflow, which refetches OSM every Monday (or run it by hand from the Actions tab) and opens a PR when the data changed. Output is byte-reproducible, so an unchanged week opens nothing.
+
 `pipeline/build.py` is a PEP 723 script; `uv` resolves its dependencies. Raw downloads are cached in `pipeline/raw/` and not committed. To cover a different area, change the extent and the Overpass bbox at the top of the script; every named `leisure=park` inside is picked up.
 
 Coordinates are local metres on the British National Grid from the extent's south-west corner. Solar azimuths are rotated by the grid convergence (−1.54° here) before use. GPS fixes are placed with an affine fit emitted by the pipeline (≤20cm error over the extent), which saves shipping a projection library.
