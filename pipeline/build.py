@@ -23,12 +23,17 @@ ROOT = Path(__file__).resolve().parent
 RAW = ROOT / "raw"
 OUT = ROOT.parent / "site" / "data"
 
-# British National Grid extent: Blythe Hill Fields, Ladywell Fields and Rushey Green, plus ~250m so low-sun
-# shadows from outside still land.
-E0, N0, E1, N1 = 536200, 173000, 538200, 175200
+# British National Grid extent: Honor Oak Park to Lewisham, Ladywell Fields down to Rushey Green, plus ~250m so
+# low-sun shadows from outside still land.
+E0, N0, E1, N1 = 535650, 173000, 538600, 176200
 W, H = E1 - E0, N1 - N0
 # Shade from beyond the extent is unknown, so seats nearer the edge than this are left out.
 EDGE = 60
+# Pub gardens OSM doesn't map, by a substring of the pub's OSM name: which side of the building, relative to the
+# nearest road, the garden is on. The seat goes in the open ground found on that side.
+# Sides are from CAMRA's pub listings (camra.org.uk/pubs).
+GARDENS = {name: "rear" for name in ("Harrow", "Fox & Firkin", "Blythe Hill Tavern", "Catford Bridge Tavern", "Brockley Jack", "Crofton Park Tavern",
+                                     "Lawrence Arms", "Jolly Farmer", "Chandos", "Catford House")}
 UA = {"User-Agent": "rushey-sun/0.1 (github.com/radiosilence/rushey-sun)"}
 
 WCS = "https://environment.data.gov.uk/spatialdata/{slug}/wcs?service=WCS&version=2.0.1&request=GetCoverage&coverageId={cov}&format=image/tiff&subset=E({e0},{e1})&subset=N({n0},{n1})"
@@ -37,7 +42,7 @@ LIDAR = {
     "dtm": ("lidar-composite-digital-terrain-model-dtm-1m", "13787b9a-26a4-4775-8523-806d13af58fc__Lidar_Composite_Elevation_DTM_1m"),
 }
 OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]
-OSM_QUERY = """[out:json][timeout:120][bbox:51.4370,-0.0440,51.4610,-0.0100];
+OSM_QUERY = """[out:json][timeout:120][bbox:51.4385,-0.0510,51.4690,-0.0045];
 (nwr["amenity"="bench"];nwr["leisure"="picnic_table"];nwr["natural"="water"];nwr["leisure"="park"];
 nwr["amenity"~"^(pub|bar|biergarten)$"];nwr["leisure"="outdoor_seating"];node["tourism"="artwork"]["name"];nwr["landuse"="cemetery"];
 way["building"];relation["building"];way["highway"];way["railway"="rail"];
@@ -88,10 +93,25 @@ def rc(poly):
     return features.rasterize([poly], out_shape=(H, W), transform=rasterio.transform.from_origin(0, H, 1, 1), all_touched=True).astype(bool)
 
 
-def pack_u16(a):
-    """Row-wise delta + byte-plane split so gzip does what PNG's Sub filter would."""
-    d = np.diff(a.astype(np.int32), axis=1, prepend=0).astype(np.uint16)
+def planes(d):
+    """Byte-plane split, so gzip sees the mostly-zero high bytes as one long run."""
+    d = d.astype(np.uint16)
     return gzip.compress(np.concatenate([(d & 0xFF).astype(np.uint8).ravel(), (d >> 8).astype(np.uint8).ravel()]).tobytes(), 9)
+
+
+def pack_rows(a):
+    """Row-wise delta, as PNG's Sub filter: suits the surface, which jumps at every wall."""
+    return planes(np.diff(a.astype(np.int64), axis=1, prepend=0))
+
+
+def pack_plane(a):
+    """Predicts each cell as left + up - upper-left, which leaves near-zero residuals on smooth terrain."""
+    a = a.astype(np.int64)
+    pred = np.zeros_like(a)
+    pred[1:, 1:] = a[1:, :-1] + a[:-1, 1:] - a[:-1, :-1]
+    pred[0, 1:] = a[0, :-1]
+    pred[1:, 0] = a[:-1, 0]
+    return planes(a - pred)
 
 
 def coords(xy, nd=1):
@@ -212,6 +232,36 @@ def main():
         return Point(local([el])[0]) if el["type"] == "node" else unary_union(polygons(el)).representative_point()
 
     seating = [(el, centre(el)) for el in osm if el.get("tags", {}).get("leisure") == "outdoor_seating"]
+
+    def open_ground(home, side):
+        """A seat in the open ground on one side of a building: (point, facing), or None if it is built up."""
+        wall, kerb = nearest_points(home.exterior, min(roads, key=home.distance))
+        ax, ay = kerb.x - wall.x, kerb.y - wall.y
+        base = np.arctan2(ax, ay) + {"front": 0, "rear": np.pi, "left": np.pi / 2, "right": -np.pi / 2}[side]
+        c = home.centroid
+        for turn in (0, 0.4, -0.4, 0.8, -0.8, 1.3, -1.3):
+            a = base + turn
+            dx, dy = np.sin(a), np.cos(a)
+            t0 = next((t for t in np.arange(0, 80, 0.5) if not home.contains(Point(c.x + dx * t, c.y + dy * t))), None)
+            if t0 is None:
+                continue
+            # Canopies and outbuildings behind a pub are mapped as buildings, so up to 8m of them can be stepped over.
+            start = run = None
+            for t in np.arange(t0 + 1.5, t0 + 40, 0.5):
+                x, y = c.x + dx * t, c.y + dy * t
+                if not (0 <= x < W and 0 <= y < H):
+                    break
+                if bmask[H - 1 - int(y), int(x)]:
+                    if start is not None or t - t0 > 8:
+                        break
+                    continue
+                start = t if start is None else start
+                run = t - start
+            if run is not None and run >= 3:
+                d = start + min(run / 2, 8)
+                # Back to the pub wall.
+                return Point(c.x + dx * d, c.y + dy * d), float(np.degrees(a) % 360)
+        return None
     used = set()
     for el in osm:
         t = el.get("tags", {})
@@ -220,25 +270,33 @@ def main():
         at = centre(el)
         home = next((b["poly"] for b in buildings if b["poly"].buffer(2).contains(at)), None)
         near = at if home is None else home
-        garden = min(((s, p) for s, p in seating if p.distance(near) < 30), key=lambda sp: sp[1].distance(at), default=None)
-        if garden:
-            used.add(garden[0]["id"])
-            spot, where = garden[1], "beer garden"
-            # Back to the pub wall.
-            f = float(np.degrees(np.arctan2(spot.x - home.centroid.x, spot.y - home.centroid.y)) % 360) if home else 180.0
-        elif home is None:
-            spot, where, f = at, "out front", facing(at.x, at.y, None)
+        mapped = min(((s, p) for s, p in seating if p.distance(near) < 30), key=lambda sp: sp[1].distance(at), default=None)
+        side = next((v for k, v in GARDENS.items() if k in t["name"]), None)
+        seats = []
+        if home is None:
+            seats.append((at, "out front", facing(at.x, at.y, None)))
         else:
             wall, kerb = nearest_points(home.exterior, min(roads, key=home.distance))
             d = max(wall.distance(kerb), 1e-6)
             step = min(1.5, d / 2) / d
             spot = Point(wall.x + (kerb.x - wall.x) * step, wall.y + (kerb.y - wall.y) * step)
-            f, where = float(np.degrees(np.arctan2(kerb.x - wall.x, kerb.y - wall.y)) % 360), "out front"
-        if not seatable.contains(spot):
-            continue
-        lon_, lat_ = from_bng.transform(spot.x + E0, spot.y + N0)
-        benches.append({"id": el["id"] if el["type"] == "node" else 10**12 + el["id"], "osm": f"{el['type']}/{el['id']}", "kind": "pub",
-                        "name": t["name"], "where": where, "x": round(spot.x, 1), "y": round(spot.y, 1), "lat": round(lat_, 7), "lon": round(lon_, 7), "f": round(float(f), 1)})
+            seats.append((spot, "out front", float(np.degrees(np.arctan2(kerb.x - wall.x, kerb.y - wall.y)) % 360)))
+        # A garden is a second seat: front and back catch the sun at different times of day.
+        if mapped:
+            used.add(mapped[0]["id"])
+            spot = mapped[1]
+            # Back to the pub wall.
+            f = float(np.degrees(np.arctan2(spot.x - home.centroid.x, spot.y - home.centroid.y)) % 360) if home else 180.0
+            seats.append((spot, "beer garden", f))
+        elif home is not None and side and (yard := open_ground(home, side)):
+            seats.append((yard[0], "garden", yard[1]))
+        base = el["id"] if el["type"] == "node" else 10**12 + el["id"]
+        for n, (spot, where, f) in enumerate(seats):
+            if not seatable.contains(spot):
+                continue
+            lon_, lat_ = from_bng.transform(spot.x + E0, spot.y + N0)
+            benches.append({"id": base + n * 3 * 10**12, "osm": f"{el['type']}/{el['id']}", "kind": "pub", "name": t["name"] + (" garden" if where != "out front" else ""),
+                            "where": where, "x": round(spot.x, 1), "y": round(spot.y, 1), "lat": round(lat_, 7), "lon": round(lon_, 7), "f": round(float(f), 1)})
     for el, spot in seating:
         if el["id"] in used or not seatable.contains(spot):
             continue
@@ -293,8 +351,10 @@ def main():
     resid = max(float(np.abs(A @ np.array(g) - v).max()) for g, v in zip(geo, (np.asarray(ge) - E0, np.asarray(gn) - N0)))
     print(f"geo affine max residual {resid * 1000:.1f} mm")
 
-    (OUT / "top.u16.gz").write_bytes(pack_u16(np.round(top * 100)))
-    (OUT / "ground.u16.gz").write_bytes(pack_u16(np.round(dtm * 100)))
+    # Ground in 5cm steps and the surface as cm above ground, which is zero over open ground: a third smaller than
+    # raw cm, for ±2.5cm that is lost in 1m cells.
+    (OUT / "ground.u16.gz").write_bytes(pack_plane(np.round(dtm * 20)))
+    (OUT / "above.u16.gz").write_bytes(pack_rows(np.maximum(np.round(top * 100) - np.round(dtm * 100), 0)))
     (OUT / "under.u8.gz").write_bytes(gzip.compress(under_q.tobytes(), 9))
     scene = {"w": W, "h": H, "origin": [E0, N0], "lat": lat, "lon": lon, "convergence": convergence, "geo": geo,
              "minH": float(dtm.min()), "maxH": float(top.max()),

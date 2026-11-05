@@ -219,7 +219,8 @@ function renderDetail() {
   }
   el.querySelector("h3").textContent = b.name;
   $("d-tags").textContent = b.kind === "spot" ? "Dropped pin · saved on this device"
-    : b.kind === "pub" ? (b.where === "beer garden" ? "Pub · the mapped outdoor seating" : "Pub · on the pavement out front; any garden isn't mapped")
+    : b.kind === "pub" ? { "beer garden": "Pub garden · the mapped outdoor seating", garden: "Pub garden · the middle of the open ground behind the pub, not a surveyed spot",
+      "out front": `Pub · on the pavement out front${places.some((p) => p.osm === b.osm && p !== b) ? "; the garden is listed separately" : ""}` }[b.where]
     : [tags, b.inscription && `“${b.inscription}”`].filter(Boolean).join(" — ");
   $("d-flip").hidden = !(state.seated && (b.kind === "table" || b.kind === "pub"));
   $("d-osm-wrap").hidden = b.kind === "spot";

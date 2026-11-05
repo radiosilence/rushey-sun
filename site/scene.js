@@ -185,22 +185,51 @@ function buildBuildings(world) {
       const [x1, y1] = ring[(i + 1) % ring.length], len = Math.hypot(x1 - x0, y1 - y0), steps = Math.max(1, Math.round(len / 1.5));
       for (let k = 0; k < steps; k++) edge.push({ x: x0 + ((x1 - x0) * k) / steps, y: y0 + ((y1 - y0) * k) / steps, nx: -(y1 - y0) / len, ny: (x1 - x0) / len });
     });
-    const clear = (x, y) => ring.every(([x0, y0], i) => {
-      const [x1, y1] = ring[(i + 1) % ring.length], dx = x1 - x0, dy = y1 - y0;
-      const t = Math.min(1, Math.max(0, ((x - x0) * dx + (y - y0) * dy) / (dx * dx + dy * dy || 1)));
-      return Math.hypot(x - x0 - t * dx, y - y0 - t * dy) > 0.75;
+    // 1m cells of the footprint: 1 inside by scanline, 2 within 0.75m of the outline. Testing every cell against
+    // every edge instead is quadratic, which a shopping centre outline makes take seconds.
+    const xs = ring.map((p) => p[0]), ys = ring.map((p) => p[1]);
+    const x0 = Math.floor(Math.min(...xs)), y0 = Math.floor(Math.min(...ys));
+    const bw = Math.ceil(Math.max(...xs)) - x0 + 1, bh = Math.ceil(Math.max(...ys)) - y0 + 1, cells = new Uint8Array(bw * bh);
+    for (let r = 0; r < bh; r++) {
+      const y = y0 + r + 0.5, cross = [];
+      ring.forEach(([ax, ay], i) => {
+        const [bx, by] = ring[(i + 1) % ring.length];
+        if (ay > y !== by > y) cross.push(ax + ((y - ay) * (bx - ax)) / (by - ay));
+      });
+      cross.sort((p, q) => p - q);
+      for (let k = 0; k + 1 < cross.length; k += 2)
+        for (let c = Math.max(0, Math.ceil(cross[k] - x0 - 0.5)); c < bw && x0 + c + 0.5 < cross[k + 1]; c++) cells[r * bw + c] = 1;
+    }
+    ring.forEach(([ax, ay], i) => {
+      const [bx, by] = ring[(i + 1) % ring.length], steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 0.25));
+      for (let k = 0; k <= steps; k++) {
+        const sx = ax + ((bx - ax) * k) / steps, sy = ay + ((by - ay) * k) / steps;
+        for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+          const c = Math.floor(sx - x0) + dc, r = Math.floor(sy - y0) + dr;
+          if (c >= 0 && r >= 0 && c < bw && r < bh && Math.hypot(x0 + c + 0.5 - sx, y0 + r + 0.5 - sy) < 0.75) cells[r * bw + c] |= 2;
+        }
+      }
     });
-    const xs = ring.map((p) => p[0]), ys = ring.map((p) => p[1]), grid = [];
-    for (let y = Math.floor(Math.min(...ys)) + 0.5; y < Math.max(...ys); y++)
-      for (let x = Math.floor(Math.min(...xs)) + 0.5; x < Math.max(...xs); x++)
-        if (inside(x, y, ring) && clear(x, y)) grid.push({ x, y, z: surface(x, y) });
+    /** Point in footprint, exact near the outline and by cell lookup elsewhere (a cell's points share its centre's side). */
+    const within = (x, y) => {
+      const c = Math.floor(x - x0), r = Math.floor(y - y0);
+      if (c < 0 || r < 0 || c >= bw || r >= bh) return false;
+      const s = cells[r * bw + c];
+      return s & 2 ? inside(x, y, ring) : s === 1;
+    };
+    const grid = [];
+    for (let r = 0; r < bh; r++) for (let c = 0; c < bw; c++) {
+      if (cells[r * bw + c] !== 1) continue;
+      const x = x0 + c + 0.5, y = y0 + r + 0.5;
+      grid.push({ x, y, z: surface(x, y) });
+    }
 
     // Overhanging trees put 15m spikes in a house roof; the footprint's 90th percentile is the honest ceiling.
     const sorted = grid.map((g) => g.z).sort((p, q) => p - q), ceiling = b.z + b.h + 1.5;
     const eave = sorted.length ? Math.max(b.z + 2.2, Math.min(sorted[Math.floor(sorted.length / 4)], b.z + b.h)) : b.z + b.h;
     const lift = (z) => Math.min(ceiling, Math.max(eave, z));
     // LIDAR on the outline itself is half ground, so read the roof a little way indoors.
-    const raw = edge.map((e) => (inside(e.x + e.nx * 1.5, e.y + e.ny * 1.5, ring) ? lift(surface(e.x + e.nx * 1.5, e.y + e.ny * 1.5)) : eave));
+    const raw = edge.map((e) => (within(e.x + e.nx * 1.5, e.y + e.ny * 1.5) ? lift(surface(e.x + e.nx * 1.5, e.y + e.ny * 1.5)) : eave));
     edge.forEach((e, i) => (e.z = [raw.at(i - 1), raw[i], raw[(i + 1) % raw.length]].sort((p, q) => p - q)[1]));
     grid.forEach((g) => (g.z = lift(g.z)));
 
@@ -212,7 +241,7 @@ function buildBuildings(world) {
     const { triangles } = Delaunator.from(points, (p) => p.x, (p) => p.y);
     for (let t = 0; t < triangles.length; t += 3) {
       const [p, q, r] = [points[triangles[t]], points[triangles[t + 1]], points[triangles[t + 2]]];
-      if (!inside((p.x + q.x + r.x) / 3, (p.y + q.y + r.y) / 3, ring)) continue;
+      if (!within((p.x + q.x + r.x) / 3, (p.y + q.y + r.y) / 3)) continue;
       const up = (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x) > 0;
       idx.push(first + triangles[t], first + triangles[t + (up ? 1 : 2)], first + triangles[t + (up ? 2 : 1)]);
     }
@@ -334,7 +363,7 @@ export function createScene(container, world) {
     scene.add(sprite);
   }
   for (const b of world.benches) {
-    if (b.kind !== "pub") continue;
+    if (b.kind !== "pub" || b.where !== "out front") continue;
     const sprite = label(b.name.replace(/^The /, ""), "#f6cf7e", 0.022);
     sprite.position.copy(toWorld(b.x, b.y, groundAt(world, b.x, b.y) + 24));
     scene.add(sprite);
