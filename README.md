@@ -26,7 +26,7 @@ Drag the map, scrub the date and time, and the shadows move. Seats in direct sun
 
 ## Known lies
 
-- LIDAR is flown leaf-off. Crowns are morphologically closed to approximate summer leaf, so **winter tree shade is overstated** — most of this canopy is bare from November to March. Tree shade is reported separately from building/terrain shade for that reason.
+- LIDAR is flown leaf-off. Crowns are morphologically closed to approximate summer leaf, so **winter tree shade is overstated** — most of this canopy is bare from November to March. Tree shade is reported separately from building/terrain shade for that reason, and counts as half sun in the hours, since canopy is dappled rather than solid.
 - A ray may pass under canopy for 30m before it is assumed blocked by trunks and understorey. That number is a judgement, not a measurement.
 - Drawn roofs are LIDAR clamped between an estimated eave and the footprint's 90th-percentile height, because overhanging trees otherwise spike them. Wall and roof colours are arbitrary. This affects the picture only; shadows use the raw surface. The Catford Cat is drawn from primitives and casts nothing.
 - In the seated view the sun can appear through a gap in the decorative trees while the bench reads as tree-shaded, or the reverse. The readout is the computed answer; the picture is not.

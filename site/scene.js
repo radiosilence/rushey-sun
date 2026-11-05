@@ -84,10 +84,9 @@ void main() {
     s += wgt * texture2D(uShadow, vUv + vec2(float(i), float(j)) * uTexel);
   }
   float facing = 0.8 + 0.2 * max(dot(normalize(vNormal), uSunDir), 0.0);
-  // Tree shade reads a touch lighter than hard shade: canopy shadow is dappled, a wall's is not.
-  float shade = mix(0.36, 0.46, s.g);
+  // Canopy shadow is dappled, so it sits halfway between full sun and a wall's shadow.
   vec3 lit = base * uSunTint * facing;
-  vec3 col = mix(base * shade * vec3(0.78, 0.88, 1.15), lit, s.r);
+  vec3 col = mix(base * 0.36 * vec3(0.78, 0.88, 1.15), lit, s.r + 0.5 * s.g);
   gl_FragColor = vec4(col * mix(0.12, 1.0, uDaylight), 1.0);
   #include <colorspace_fragment>
 }`;
