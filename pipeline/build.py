@@ -96,7 +96,7 @@ def rc(poly):
 def planes(d):
     """Byte-plane split, so gzip sees the mostly-zero high bytes as one long run."""
     d = d.astype(np.uint16)
-    return gzip.compress(np.concatenate([(d & 0xFF).astype(np.uint8).ravel(), (d >> 8).astype(np.uint8).ravel()]).tobytes(), 9)
+    return gzip.compress(np.concatenate([(d & 0xFF).astype(np.uint8).ravel(), (d >> 8).astype(np.uint8).ravel()]).tobytes(), 9, mtime=0)
 
 
 def pack_rows(a):
@@ -351,11 +351,12 @@ def main():
     resid = max(float(np.abs(A @ np.array(g) - v).max()) for g, v in zip(geo, (np.asarray(ge) - E0, np.asarray(gn) - N0)))
     print(f"geo affine max residual {resid * 1000:.1f} mm")
 
+    # gzip mtime is pinned so an unchanged rebuild is byte-identical and the weekly job opens no PR.
     # Ground in 5cm steps and the surface as cm above ground, which is zero over open ground: a third smaller than
     # raw cm, for ±2.5cm that is lost in 1m cells.
     (OUT / "ground.u16.gz").write_bytes(pack_plane(np.round(dtm * 20)))
     (OUT / "above.u16.gz").write_bytes(pack_rows(np.maximum(np.round(top * 100) - np.round(dtm * 100), 0)))
-    (OUT / "under.u8.gz").write_bytes(gzip.compress(under_q.tobytes(), 9))
+    (OUT / "under.u8.gz").write_bytes(gzip.compress(under_q.tobytes(), 9, mtime=0))
     scene = {"w": W, "h": H, "origin": [E0, N0], "lat": lat, "lon": lon, "convergence": convergence, "geo": geo,
              "minH": float(dtm.min()), "maxH": float(top.max()),
              "parks": [{"name": n, "p": coords(p.exterior.coords[:-1])} for n, p in parks], "labels": labels, "benches": benches, "buildings": buildings,

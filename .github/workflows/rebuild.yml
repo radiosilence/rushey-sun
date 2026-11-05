@@ -1,0 +1,41 @@
+name: rebuild
+# Refetches OSM weekly so map edits reach the site, and opens a PR when the data changed.
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rebuild
+  cancel-in-progress: true
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+      # LIDAR only changes with the extent, which lives in build.py.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            pipeline/raw/dsm.tif
+            pipeline/raw/dtm.tif
+          key: lidar-${{ hashFiles('pipeline/build.py') }}
+      - run: rm -f pipeline/raw/osm.json && mise run data
+      - uses: peter-evans/create-pull-request@v8
+        with:
+          # GITHUB_TOKEN may not open PRs here, and PRs it opens would not trigger other workflows.
+          token: ${{ secrets.RELEASE_TOKEN }}
+          branch: rebuild/osm
+          delete-branch: true
+          add-paths: site/data
+          commit-message: Rebuild data from current OpenStreetMap
+          title: Rebuild data from current OpenStreetMap
+          body: |
+            Weekly rebuild of `site/data` from OpenStreetMap, so benches, pubs and gardens mapped since the last build appear on the site. LIDAR is unchanged.
+
+            Check the seat count in the job log against the last build before merging.
