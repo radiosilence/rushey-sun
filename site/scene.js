@@ -103,7 +103,8 @@ function intTexture(data, w, h, type, internalFormat) {
 const AREA_FILL = { garden: "#a9b98e", grass: "#93b96c", meadow: "#a9b76a", pitch: "#84b363", scrub: "#7f9f5e", sand: "#e3d3a0", play: "#cdb98f", parking: "#a5a5a0" };
 
 function drawBasemap(world, size) {
-  const { w, h } = world, k = size / w;
+  // The canvas keeps the extent's aspect: the plane's UVs span it exactly, so a square canvas would stretch one axis.
+  const { w, h } = world, k = size / Math.max(w, h), cw = Math.round(w * k), ch = Math.round(h * k);
   const mask = document.createElement("canvas");
   mask.width = w; mask.height = h;
   const mctx = mask.getContext("2d"), img = mctx.createImageData(w, h);
@@ -114,14 +115,15 @@ function drawBasemap(world, size) {
   mctx.putImageData(img, 0, 0);
 
   const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
+  canvas.width = cw;
+  canvas.height = ch;
   const ctx = canvas.getContext("2d");
   const trace = (pts, close) => {
     ctx.beginPath();
     pts.forEach(([x, y], i) => ctx[i ? "lineTo" : "moveTo"](x * k, (h - y) * k));
     if (close) ctx.closePath();
   };
-  ctx.fillStyle = "#b4b9a6"; ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = "#b4b9a6"; ctx.fillRect(0, 0, cw, ch);
   const fillAreas = (kinds) => {
     for (const area of world.areas) {
       if (!kinds.includes(area.k)) continue;
@@ -133,7 +135,7 @@ function drawBasemap(world, size) {
   ctx.fillStyle = "#93b96c";
   for (const park of world.parks) { trace(park.p, true); ctx.fill(); }
   fillAreas(["grass", "meadow", "scrub", "pitch", "play", "sand", "parking"]);
-  ctx.drawImage(mask, 0, 0, size, size);
+  ctx.drawImage(mask, 0, 0, cw, ch);
   ctx.fillStyle = "#6f9fc0";
   for (const poly of world.water) { trace(poly, true); ctx.fill(); }
   ctx.lineCap = ctx.lineJoin = "round";
