@@ -5,10 +5,15 @@ export const SUN = 0, TREE_SHADE = 1, SOLID_SHADE = 2, NIGHT = 3;
 export const UNDER_CANOPY_LIMIT = 30;
 export const SEAT_HEIGHT = 1.0;
 
-async function gunzip(url) {
+async function gunzip(url, progress) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${url}: ${res.status}`);
-  return new Uint8Array(await new Response(res.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+  // GitHub Pages serves .gz as application/gzip without Content-Encoding, so Content-Length counts the bytes read here.
+  progress.add(+res.headers.get("content-length") || 0);
+  const counted = res.body.pipeThrough(new TransformStream({
+    transform(chunk, ctl) { progress.got(chunk.byteLength); ctl.enqueue(chunk); },
+  }));
+  return new Uint8Array(await new Response(counted.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
 }
 
 // Inverses of pack_plane and pack_rows in pipeline/build.py. Arithmetic is mod 2^16, so negative residuals wrap back.
@@ -35,10 +40,15 @@ function unpackRows(bytes, w, h, base) {
 }
 
 /** Surface layers in centimetres, raster order (row 0 = north edge). */
-export async function loadWorld() {
+export async function loadWorld(onProgress = () => {}) {
+  let total = 0, loaded = 0;
+  const progress = {
+    add: (n) => { total += n; onProgress(loaded, total); },
+    got: (n) => { loaded += n; onProgress(loaded, total); },
+  };
   const [scene, above, steps, under] = await Promise.all([
     fetch("data/scene.json").then((r) => r.json()),
-    gunzip("data/above.u16.gz"), gunzip("data/ground.u16.gz"), gunzip("data/under.u8.gz"),
+    gunzip("data/above.u16.gz", progress), gunzip("data/ground.u16.gz", progress), gunzip("data/under.u8.gz", progress),
   ]);
   const { w, h } = scene;
   const ground = unpackPlane(steps, w, h).map((g) => g * 5);

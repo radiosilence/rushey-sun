@@ -11,7 +11,11 @@ body {
 }
 #view { position: relative; min-width: 0; min-height: 0; touch-action: none; }
 #view canvas { display: block; }
-#loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); }
+#loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); text-align: center; }
+#load-bar { display: block; width: min(240px, 60vw); height: 6px; margin: 10px auto 0; appearance: none; border: 0; border-radius: 3px; background: var(--line); overflow: hidden; }
+#load-bar::-webkit-progress-bar { background: var(--line); }
+#load-bar::-webkit-progress-value { background: var(--sun); }
+#load-bar::-moz-progress-bar { background: var(--sun); }
 #compass {
   position: absolute; top: 12px; right: 12px; width: 40px; height: 40px; border-radius: 50%;
   border: 1px solid var(--line); background: #17130fcc; color: var(--ink); padding: 0;

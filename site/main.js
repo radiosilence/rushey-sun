@@ -21,7 +21,15 @@ function ramp(f) {
 
 let world, view;
 try {
-  world = await loadWorld();
+  const mb = (n) => (n / 1e6).toFixed(1);
+  world = await loadWorld((loaded, total) => {
+    $("load-bar").max = total;
+    $("load-bar").value = loaded;
+    $("load-text").textContent = `Loading LIDAR… ${mb(loaded)} of ${mb(total)} MB`;
+  });
+  $("load-bar").removeAttribute("value");
+  $("load-text").textContent = "Building the map…";
+  await new Promise((r) => requestAnimationFrame(() => setTimeout(r)));
   view = createScene($("view"), world);
   $("loading").remove();
 } catch (err) {
