@@ -31,7 +31,8 @@ Drag the map, scrub the date and time, and the shadows move. Seats in direct sun
 - Drawn roofs are LIDAR clamped between an estimated eave and the footprint's 90th-percentile height, because overhanging trees otherwise spike them. Wall and roof colours are arbitrary. This affects the picture only; shadows use the raw surface. The Catford Cat is drawn from primitives and casts nothing.
 - In the seated view the sun can appear through a gap in the decorative trees while the bench reads as tree-shaded, or the reverse. The readout is the computed answer; the picture is not.
 - Movable furniture and pub tables are wherever someone last mapped them, or guessed as above. An estimated garden seat is a point in the right yard, not the table you would pick; a covered garden reads as building shade because the canopy is in the LIDAR. Rather than chase that, **Pin** analyses any tapped spot exactly like a bench; pins live in `localStorage`, not in the data.
-- Bench positions and orientation come from OSM. Unmapped benches don't exist here, and benches without a `direction` tag are drawn facing the nearest path.
+- Bench positions and orientation come from OSM, plus `pipeline/proposed-benches.geojson`: benches known locally but not yet mapped, such as the facing pairs in each gap between the verge strips along Rushey Green. Their positions are estimated from the gap geometry. Each drops out on rebuild once OSM has a bench within 3m of it, so the file can be emptied once they are uploaded.
+- Benches in neither source don't exist here, and benches without a `direction` tag are drawn facing the nearest path.
 - Direct-beam geometry only: no cloud, no diffuse light.
 - Solar position is the low-precision Meeus series, good to a fraction of a degree.
 
