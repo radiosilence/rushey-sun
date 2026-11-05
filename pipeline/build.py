@@ -227,6 +227,17 @@ def main():
                         "lat": el["lat"], "lon": el["lon"], "f": round(facing(x, y, t.get("direction")), 1),
                         **{k: t[k] for k in ("backrest", "material", "seats", "inscription") if k in t}})
 
+    # Benches known locally but not yet in OSM. Each drops out once a mapped bench lies within 3m of it.
+    mapped_benches = [Point(b["x"], b["y"]) for b in benches]
+    for i, feature in enumerate(json.loads((ROOT / "proposed-benches.geojson").read_text())["features"]):
+        lon_, lat_ = feature["geometry"]["coordinates"]
+        e, n = to_bng.transform(lon_, lat_)
+        pt = Point(e - E0, n - N0)
+        if not seatable.contains(pt) or any(pt.distance(m) < 3 for m in mapped_benches):
+            continue
+        benches.append({"id": 4 * 10**12 + i, "kind": "bench", "unmapped": True, "g": place_name(pt), "x": round(pt.x, 1), "y": round(pt.y, 1),
+                        "lat": lat_, "lon": lon_, "f": round(facing(pt.x, pt.y, feature["properties"].get("direction")), 1)})
+
     # Pubs: the mapped beer garden or outdoor seating if there is one, else the pavement out front.
     def centre(el):
         return Point(local([el])[0]) if el["type"] == "node" else unary_union(polygons(el)).representative_point()
